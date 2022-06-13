@@ -38,18 +38,18 @@ The sample code is acting as a high-level implementation, following should be ad
 ## Target technology stack  
 
 ### S3 Buckets
-One Amazon S3 bucket `productionBucket` is setup to represent production data storage solution. It is encrypted with [AWS Key Management Service (KMS) Key](https://aws.amazon.com/kms/) `productionKey`.
+One Amazon S3 bucket `productionDataBucket` is setup to represent production data storage solution. It is encrypted with [AWS Key Management Service (KMS) Key](https://aws.amazon.com/kms/) `productionDataKey`.
 
-One Amazon S3 bucket to represent the lower environment storage solution. It is encrypted with [AWS Key Management Service (KMS) Key](https://aws.amazon.com/kms/) `nonproductionKey`.
+One Amazon S3 bucket to represent the lower environment storage solution `nonproductionDataBucket`. It is encrypted with [AWS Key Management Service (KMS) Key](https://aws.amazon.com/kms/) `nonproductionDataKey`.
 
-One Amazon S3 bucket `infrastructureBucket` is setup to store Glue scripts/other internal scripts in future. It is encrypted with [AWS Key Management Service (KMS) Key](https://aws.amazon.com/kms/) `productionKey`.
+One Amazon S3 bucket `infrastructureBucket` is setup to store Glue scripts/other internal scripts in future. It is encrypted with [AWS Key Management Service (KMS) Key](https://aws.amazon.com/kms/) `infrastructureKey`.
 
-One Amazon S3 bucket `logBucket` is setup to store logs from Glue job executions/other infrastructure. It is possible to output most logs into [Amazon CloudWatch Logs](https://aws.amazon.com/cloudwatch/). But depend on use cases/libraries, may also prefer to store log output into S3 bucket. It is encrypted with [AWS Key Management Service (KMS) Key](https://aws.amazon.com/kms/) `productionKey`.
+One Amazon S3 bucket `logBucket` is setup to store logs from Glue job executions/other infrastructure. It is possible to output most logs into [Amazon CloudWatch Logs](https://aws.amazon.com/cloudwatch/). But depend on use cases/libraries, may also prefer to store log output into S3 bucket. It is encrypted with [AWS Key Management Service (KMS) Key](https://aws.amazon.com/kms/) `infrastructureKey`.
 
-The difference of keys is to simulate real - world behavior as business will use different AWS KMS key for each environment. The buckets in this case are in same account. But a similar setup can be done for buckets between different accounts with correct [AWS Identity and Access Management (IAM)](https://aws.amazon.com/iam/) setup. More detail can be found in the [doc](https://aws.amazon.com/premiumsupport/knowledge-center/cross-account-access-s3/).
+The difference of keys is to simulate real - world behavior as business will use different AWS KMS key for different environments. These buckets are in the same account. But a similar setup can be done for buckets between different accounts with correct [AWS Identity and Access Management (IAM)](https://aws.amazon.com/iam/) setup. More detail can be found in the [doc](https://aws.amazon.com/premiumsupport/knowledge-center/cross-account-access-s3/).
 
 
-Glue Job Setup
+### Glue Job Setup
 AWS Glue supports S3 Bucket (can point to specific prefix) as data source and data target.
 
 This opens up possibility for use case to move production data to lower environment with data sanitization:
@@ -59,7 +59,7 @@ This opens up possibility for use case to move production data to lower environm
 
 It is possible to do data content level manipulation, but recommend to keep at field level as a simpler start point.
 
-In this sample, the Glue job will read input CSV files from `productionBucket`, which have following fields:
+In this sample, the Glue job will read input CSV files from `productionDataBucket`, which have following fields:
 
 | invoiceId |	accountId |	purchaseTime |	purchaseAmount |	purchaseItemNumber |	location |
 | --- | --- | --- | --- | --- | --- |
@@ -67,7 +67,7 @@ In this sample, the Glue job will read input CSV files from `productionBucket`, 
 
 The Glue job will remove user sensitive fields: `invoiceId` and `accountId` during the ETL process. Note removal fields may depend on business use cases. The field `location` in this case is a coarse identifier not directly tie to user, so it is kept to be utilized in the lower environment analyze.
 
-Glue job will then upload processed data into `nonProductionBucket`, which will only contain following fields:
+Glue job will then upload processed data into `nonproductionDataBucket`, which will only contain following fields:
 
 | purchaseTime |	purchaseAmount |	purchaseItemNumber |	location |
 | --- | --- | --- | --- |
@@ -87,7 +87,7 @@ AWS Glue job will require an explicit IAM role to be assigned. This code sample 
 
 The role only has `READ` privileges (S3 bucket and correspond KMS key access) to `productionBucket` and `infrastructureBucket` as it should not be able to modify data/nor script in production.
 
-The role has `READ/WRITE` privileges (S3 bucket and correspond KMS key access) to `nonproductionBucket` and `logBucket` to write processed data and logs.
+The role has `READ/WRITE` privileges (S3 bucket and correspond KMS key access) to `nonproductionDataBucket` and `logBucket` to write processed data and logs.
 
 This allows the finer detail security lock down to ensure the job cannot modify production data nor access areas outside of its task.
 
@@ -125,13 +125,13 @@ But please adjust as needed base on use case in `<git repo>/lib/glue-data-saniti
 
 ### Overall Flow
 1. AWS Glue job starts.
-2. The job downloads Glue scripts from `infrastructureBucket` through its IAM role and `productionKey` KMS key to unencrypt data.
-3. The job downloads data from data source `productionBucket` through its IAM role and `productionKey` KMS key to unencrypt data.
-4. During the job ETL processes, will output logs into CloudWatch Logs/S3 Bucket`logBucket` through its IAM role and `productionKey` KMS key to encrypt/unencrypt logs. The Glue job will remove user sensitive fields: `invoiceId` and `accountId` during the ETL process.
-5. The job uploads final processed data into data target `nonproductionBucket` through its IAM role and `nonproductionKey` KMS key to encrypt data.
+2. The job downloads Glue scripts from `infrastructureBucket` through its IAM role and `infrastructureKey` KMS key to unencrypt data.
+3. The job downloads data from data source `productionDataBucket` through its IAM role and `productionDataKey` KMS key to unencrypt data.
+4. During the job ETL processes, will output logs into CloudWatch Logs/S3 Bucket`logBucket` through its IAM role and `infrastructureKey` KMS key to encrypt/unencrypt logs. The Glue job will remove user sensitive fields: `invoiceId` and `accountId` during the ETL process.
+5. The job uploads final processed data into data target `nonproductionDataBucket` through its IAM role and `nonproductionDataKey` KMS key to encrypt data.
 
 ## Deploy / Clean up
-Deploy this stack to your default AWS account/region (assume [AWS CDK](https://aws.amazon.com/cdk/) 2.1.0 or later installed)
+Deploy this stack to your default AWS account/region (assume [AWS CDK](https://aws.amazon.com/cdk/) 2.20.0 or later installed)
 
 IMPORTANT: Please save the output from Outputs section from stack deployment below as it will be used in later stories
 
@@ -174,7 +174,7 @@ aws s3 sync . s3://gluedatasanitizationfrom-internalinfrastructurebu-147oidtt8rv
 cd ..
 ```
 
-6. Copy the sample data to `production` S3 bucket
+6. Copy the sample data to `productionDataBucket` S3 bucket
 
 In the git repo, please open a terminal, ensure AWS CLI credential is valid, then perform following:
 ```
@@ -196,7 +196,7 @@ cd ..
 Please first go to AWS Console -> Services -> Glue -> Jobs -> Select job `glue-etl-job` -> Click on `Run` to execute the job
 Note: Only one execution can happen at a time
 
-8. Verify the data in `nonproduction` S3 bucket
+8. Verify the data in `nonproductionDataBucket` S3 bucket
 In an empty temp directory that data can be downloaded, please open a terminal, ensure AWS CLI credential is valid, then perform following:
 ```
 aws s3 sync s3://<NonproductionDataBucket>/ .
